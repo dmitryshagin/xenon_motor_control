@@ -76,7 +76,7 @@ void enable(){
   digitalWrite(blueLED, HIGH);
   digitalWrite(enablePin, LOW);
 //  delayMicroseconds(2000);
-//  delay(3);//it requires at least 1.7ms to start accepting data.
+  delay(3);//it requires at least 1.7ms to start accepting data.
   driver_enabled = 1;
 }
 
@@ -153,26 +153,45 @@ void setup() {
 }
 
 void loop() {
-  int time_since_last_moved = (millis() - motor_last_moved_at);
+  uint32_t time_since_last_moved = (millis() - motor_last_moved_at);
 
   if(!driver_enabled && (time_since_last_moved > target)){ //dont measure while motor is moving and some time after (proportional to position, to avoid oscillations
     if(reads_made < READS_TO_AVERAGE){
       newCorrectorIn += analogRead(correctorInPin);
+      newVoltageIn += analogRead(voltageInPin);
       reads_made++;
     }else{
       correctorIn = newCorrectorIn / READS_TO_AVERAGE;
       newCorrectorIn = 0;
+      voltageIn = newVoltageIn / READS_TO_AVERAGE;
+      newVoltageIn = 0;
       minVal = voltageIn * 0.4; //everything below 40% is 0
-      maxVal = voltageIn * 0.8; //everything below 80% is 100
+      maxVal = voltageIn * 0.8; //everything above 80% is 100
+
+      Serial.print("Cin: ");
+      Serial.print(correctorIn);
+      Serial.print("    Vin: ");
+      Serial.print(voltageIn);
+      Serial.print("    MinVal: ");
+      Serial.print(minVal);
+      Serial.print("    MaxVal: ");
+      Serial.print(maxVal);
+      Serial.print("    Target (cst): ");
+      Serial.print(target);
       target = constrain(correctorIn, minVal, maxVal); // limit value
-      target = map(target, minVal, maxVal, 100, steps_total); // scale value to produce desired step number. Will omit useless lowest positions
+      target = map(target, minVal, maxVal, 180, steps_total); // scale value to produce desired step number. Will omit useless lowest positions
+      Serial.print("    Target (map): ");
+      Serial.println(target);
+
+      Serial.print("    Position: ");
+      Serial.println(currentPosition);
       reads_made = 0;
     }
   }
   
   digitalWrite(redLED, !digitalRead(faultPin));
 
-  int error = abs(target-currentPosition);
+  int error = (target-currentPosition);
 
   if( ( error > 0 && //no denoise if no direction change
         (
@@ -180,8 +199,8 @@ void loop() {
           (target > currentPosition && previous_direction == 0)
         )
       ) ||
-      ((error > 3u) && ( time_since_last_moved > 1500 )) || //denoise for small steps
-      ((error > 25u) && (time_since_last_moved > 200)) //to avoid rapid direction changes
+      ((abs(error) > 2u) && ( time_since_last_moved > 1500 )) || //denoise for small steps
+      ((abs(error) > 25u) && (time_since_last_moved > 200)) //to avoid rapid direction changes
      ){
     
     digitalWrite(stepPin, LOW);//keep it low just in case
@@ -204,12 +223,12 @@ void loop() {
     delayMicroseconds(step_delay);
     digitalWrite(stepPin, LOW);
     delayMicroseconds(step_delay);*/
-    delay(currentPosition); //if motors are at different positions - delays will be different and it will reduce oscillations
+    delay(currentPosition*2); //if motors are at different positions - delays will be different and it will reduce oscillations
     moveToPosition(target);
     delay(10);
     disable(); // Release motor to avoid overheating
     motor_last_moved_at = millis();
-    delay(target);
+    delay(target*2);
   }else{
 //    if(driver_enabled && (time_since_last_moved > 100)){ //disable driver, but don't do it too often. Driver affects readings heavily! And they interfeir between two lamps
 //      //Serial.println(currentPosition);
